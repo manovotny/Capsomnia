@@ -36,6 +36,24 @@ enum UpdateCheck {
         return now.timeIntervalSince(lastCheckedAt) >= minimumInterval
     }
 
+    /// Whether `pkgutil --check-signature` output proves the package is
+    /// signed by the expected Developer ID team. Requires a clean exit, a
+    /// signed status, and the team ID on a "Developer ID Installer"
+    /// certificate line — a team ID appearing anywhere else does not count.
+    static func installerSignatureIsTrusted(exitStatus: Int32, output: String, teamID: String) -> Bool {
+        guard exitStatus == 0 else {
+            return false
+        }
+        guard output.contains("Status: signed") else {
+            return false
+        }
+        return output
+            .split(separator: "\n")
+            .contains { line in
+                line.contains("Developer ID Installer") && line.contains("(\(teamID))")
+            }
+    }
+
     /// What to do with a previously downloaded installer package. The download
     /// is removed only after the app is running as (at least) the version that
     /// installer delivered.

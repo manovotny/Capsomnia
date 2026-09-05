@@ -25,6 +25,7 @@ final class UpdateController {
 
     private let log: (String) -> Void
     private var isChecking = false
+    private var isDownloading = false
     private var promoteInFlightCheckToUserInitiated = false
     private var lastAttemptAt: Date?
     private var autoCheckTimer: Timer?
@@ -162,9 +163,11 @@ final class UpdateController {
     }
 
     private func downloadInstaller(version: String) {
+        guard !isDownloading else { return }
         guard let downloadURL = URL(
             string: "https://github.com/\(Self.repository)/releases/download/v\(version)/Capsomnia-\(version).pkg"
         ) else { return }
+        isDownloading = true
         log("update_download started version=\(version)")
 
         let task = URLSession.shared.downloadTask(with: downloadURL) { [weak self] location, response, error in
@@ -194,6 +197,25 @@ final class UpdateController {
                 try? FileManager.default.removeItem(at: destination)
                 try FileManager.default.moveItem(at: location, to: destination)
 
+                // The package must be signed by Capsomnia's own Developer ID
+                // team — Gatekeeper alone accepts any validly signed and
+                // notarized installer, not necessarily ours.
+                let signature = CommandRunner.run(
+                    "/usr/sbin/pkgutil",
+                    ["--check-signature", destination.path]
+                )
+                guard UpdateCheck.installerSignatureIsTrusted(
+                    exitStatus: signature.status,
+                    output: signature.stdout,
+                    teamID: developerTeamID
+                ) else {
+                    try? FileManager.default.removeItem(at: destination)
+                    DispatchQueue.main.async {
+                        self?.handleDownloadFailure(reason: "signature_untrusted status=\(signature.status)")
+                    }
+                    return
+                }
+
                 // URLSession downloads carry no quarantine attribute for a
                 // non-sandboxed app, and quarantine is what makes Installer
                 // run the package through Gatekeeper. Fail closed: without
@@ -220,6 +242,7 @@ final class UpdateController {
     }
 
     private func handleDownloadSuccess(version: String, destination: URL) {
+        isDownloading = false
         guard NSWorkspace.shared.open(destination) else {
             try? FileManager.default.removeItem(at: destination)
             handleDownloadFailure(reason: "installer_open_failed")
@@ -230,6 +253,7 @@ final class UpdateController {
     }
 
     private func handleDownloadFailure(reason: String) {
+        isDownloading = false
         log("update_download failed error=\(reason)")
         let strings = AppStrings.current()
         presentAlert(

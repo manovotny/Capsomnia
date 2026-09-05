@@ -3,6 +3,10 @@ import Foundation
 
 let appName = "Capsomnia"
 let appLabel = "com.github.fuji-mak.capsomnia"
+/// Developer ID team that signs Capsomnia's release packages
+/// (scripts/build-pkg.sh). Downloaded update installers must be signed by
+/// this team before they are opened.
+let developerTeamID = "ZJZ8627852"
 let helperPath = "/Library/PrivilegedHelperTools/capsomnia-pmset"
 let displaySleepHelperMode = "display-sleep"
 let logDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
