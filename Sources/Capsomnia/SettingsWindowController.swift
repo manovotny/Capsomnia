@@ -77,6 +77,36 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let externalCapsLockOffToggle = LEDToggle(
         isOn: Preferences.ignoreExternalCapsLockOffWhileLidClosed
     )
+    private let automaticUpdateChecksTitle = brandLabel(
+        size: 13,
+        weight: .medium,
+        color: Brand.text
+    )
+    private let automaticUpdateChecksDesc = brandLabel(
+        size: 12,
+        color: Brand.textDim,
+        wraps: true
+    )
+    private let automaticUpdateChecksToggle = LEDToggle(
+        isOn: Preferences.automaticUpdateChecks
+    )
+
+    private let updateHeading = brandLabel(size: 11, weight: .semibold, color: Brand.textFaint)
+    private let updateVersionLabel = brandLabel(size: 18, weight: .semibold, color: Brand.led, wraps: true)
+    private let updateCurrentVersionLabel = brandLabel(size: 12, color: Brand.textDim, wraps: true)
+    private let updateButton = LEDButton()
+    private let releaseNotesButton = NSButton()
+    private let updateVersionRow = NSStackView()
+    private var updateCard = NSView()
+    private let updateCardStack = NSStackView()
+    private var automaticUpdateChecksRow = NSView()
+    private let updateDivider = brandDivider()
+    private var updateRowWidthConstraints: [NSLayoutConstraint] = []
+    private var updateCardWidthConstraint: NSLayoutConstraint?
+    private var availableUpdateVersion: String?
+    private let currentVersion: String
+    private let onUpdate: (String) -> Void
+    private let onReleaseNotes: (String) -> Void
 
     private let shortcutHeading = brandLabel(
         size: 11,
@@ -120,6 +150,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let autoOffDisplayProvider: () -> AutoOffDisplayState
     private let onKeyboardShortcutChange: (KeyboardShortcut?) -> Bool
     private let onKeyboardShortcutRecordingChange: (Bool) -> Void
+    private let onAutomaticUpdateChecksChange: (Bool) -> Void
     private let onFinishInitialSetup: () -> Void
     private var page: SettingsPage = .settings
 
@@ -135,7 +166,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         autoOffDisplayProvider: @escaping () -> AutoOffDisplayState,
         onKeyboardShortcutChange: @escaping (KeyboardShortcut?) -> Bool,
         onKeyboardShortcutRecordingChange: @escaping (Bool) -> Void,
-        onFinishInitialSetup: @escaping () -> Void
+        onAutomaticUpdateChecksChange: @escaping (Bool) -> Void,
+        onFinishInitialSetup: @escaping () -> Void,
+        currentVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0",
+        onUpdate: @escaping (String) -> Void = { _ in },
+        onReleaseNotes: @escaping (String) -> Void = { _ in }
     ) {
         self.onDedicatedCapsLockModeChange = onDedicatedCapsLockModeChange
         self.onShowMenuBarIconChange = onShowMenuBarIconChange
@@ -148,7 +183,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.autoOffDisplayProvider = autoOffDisplayProvider
         self.onKeyboardShortcutChange = onKeyboardShortcutChange
         self.onKeyboardShortcutRecordingChange = onKeyboardShortcutRecordingChange
+        self.onAutomaticUpdateChecksChange = onAutomaticUpdateChecksChange
         self.onFinishInitialSetup = onFinishInitialSetup
+        self.currentVersion = currentVersion
+        self.onUpdate = onUpdate
+        self.onReleaseNotes = onReleaseNotes
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Self.settingsContentWidth, height: 480),
@@ -222,6 +261,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         openAtLoginTitle.stringValue = strings.openAtLogin
         openAtLoginDesc.stringValue = strings.openAtLoginDesc
         openAtLoginToggle.setAccessibilityLabel(strings.openAtLogin)
+        automaticUpdateChecksTitle.stringValue = strings.automaticUpdateChecks
+        automaticUpdateChecksDesc.stringValue = strings.automaticUpdateChecksDesc
+        automaticUpdateChecksToggle.setAccessibilityLabel(strings.automaticUpdateChecks)
 
         autoOffControl.setStrings(
             desc: strings.autoOffTimerDesc,
@@ -243,12 +285,37 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         shortcutRecorder.setAccessibilityLabel(strings.keyboardShortcut)
         shortcutRecorder.setAccessibilityHelp(strings.keyboardShortcutDesc)
 
+        updateHeading.stringValue = strings.updatesHeading.uppercased()
+        updateVersionLabel.stringValue = availableUpdateVersion.map { "Capsomnia \($0)" } ?? ""
+        updateCurrentVersionLabel.stringValue = String(format: strings.updateCurrentVersionFormat, currentVersion)
+        updateButton.title = strings.updateDownloadAndInstall
+        releaseNotesButton.attributedTitle = NSAttributedString(
+            string: strings.releaseNotes,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: Brand.textDim,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ]
+        )
+        releaseNotesButton.setAccessibilityLabel(strings.releaseNotes)
+        layoutUpdateRows()
+
         noteLabel.stringValue = strings.initialSettingsNote
         doneButton.title = isInitialSetup ? strings.getStarted : strings.done
 
         appHeader.isHidden = isAdvancedSettings
 
         updateValues()
+    }
+
+    func updateAvailableVersion(_ version: String?) {
+        guard availableUpdateVersion != version else { return }
+        availableUpdateVersion = version
+        reloadText()
+        if page == .advancedSettings {
+            applyLayout()
+            resizeToFit()
+        }
     }
 
     func show(page: SettingsPage) {
@@ -324,6 +391,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         keepDisplayAwakeCard = buildKeepDisplayAwakeCard()
         systemCard = buildSystemCard()
         shortcutCard = buildShortcutCard()
+        updateCard = buildUpdateCard()
         autoOffCard = buildAutoOffCard()
         configureAdvancedHeader()
         configureAdvancedSettingsButton()
@@ -367,6 +435,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             advancedSettingsButton.widthAnchor.constraint(equalTo: bodyStack.widthAnchor),
             doneButton.widthAnchor.constraint(equalTo: bodyStack.widthAnchor)
         ]
+        updateCardWidthConstraint = updateCard.widthAnchor.constraint(equalTo: advancedRightColumn.widthAnchor)
         advancedSettingsLayoutConstraints = [
             advancedHeader.widthAnchor.constraint(equalTo: bodyStack.widthAnchor),
             advancedColumns.widthAnchor.constraint(equalTo: bodyStack.widthAnchor),
@@ -389,6 +458,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func applyLayout() {
+        updateCardWidthConstraint?.isActive = false
         NSLayoutConstraint.deactivate(
             initialPreferencesLayoutConstraints
                 + settingsLayoutConstraints
@@ -432,6 +502,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
             advancedRightColumn.addArrangedSubview(shortcutHeading)
             advancedRightColumn.addArrangedSubview(shortcutCard)
+            advancedRightColumn.addArrangedSubview(updateHeading)
+            advancedRightColumn.addArrangedSubview(updateCard)
+            advancedRightColumn.setCustomSpacing(22, after: shortcutCard)
+            advancedRightColumn.setCustomSpacing(8, after: updateHeading)
+            updateCardWidthConstraint?.isActive = true
             advancedRightColumn.addArrangedSubview(advancedRightSpacer)
             advancedRightColumn.setCustomSpacing(8, after: shortcutHeading)
 
@@ -678,6 +753,74 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         return card
     }
 
+    private func buildUpdateCard() -> NSView {
+        automaticUpdateChecksToggle.onToggle = { [weak self] enabled in
+            self?.onAutomaticUpdateChecksChange(enabled)
+            self?.updateValues()
+        }
+        automaticUpdateChecksRow = settingRow(
+            title: automaticUpdateChecksTitle,
+            desc: automaticUpdateChecksDesc,
+            accessory: automaticUpdateChecksToggle
+        )
+        updateButton.onClick = { [weak self] in
+            guard let self, let version = self.availableUpdateVersion else { return }
+            self.onUpdate(version)
+        }
+        releaseNotesButton.isBordered = false
+        releaseNotesButton.alignment = .left
+        releaseNotesButton.translatesAutoresizingMaskIntoConstraints = false
+        releaseNotesButton.target = self
+        releaseNotesButton.action = #selector(openReleaseNotes)
+        updateVersionRow.orientation = .horizontal
+        updateVersionRow.alignment = .firstBaseline
+        updateVersionRow.spacing = 8
+        updateVersionRow.translatesAutoresizingMaskIntoConstraints = false
+        updateVersionRow.addArrangedSubview(updateVersionLabel)
+        updateVersionRow.addArrangedSubview(releaseNotesButton)
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        updateVersionRow.addArrangedSubview(spacer)
+        updateVersionLabel.setContentHuggingPriority(.required, for: .horizontal)
+        releaseNotesButton.setContentHuggingPriority(.required, for: .horizontal)
+        releaseNotesButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        configureColumn(updateCardStack)
+        updateCardStack.spacing = 14
+        let card = brandCard()
+        card.addSubview(updateCardStack)
+        NSLayoutConstraint.activate([
+            updateCardStack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            updateCardStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            updateCardStack.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
+            updateCardStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18)
+        ])
+        return card
+    }
+
+    @objc private func openReleaseNotes() {
+        guard let version = availableUpdateVersion else { return }
+        onReleaseNotes(version)
+    }
+
+    private func layoutUpdateRows() {
+        NSLayoutConstraint.deactivate(updateRowWidthConstraints)
+        clearArrangedSubviews(updateCardStack)
+        var rows: [NSView] = [automaticUpdateChecksRow]
+        if availableUpdateVersion != nil {
+            rows += [updateDivider, updateVersionRow, updateCurrentVersionLabel, updateButton]
+        }
+        rows.forEach { updateCardStack.addArrangedSubview($0) }
+        updateRowWidthConstraints = rows.map {
+            $0.widthAnchor.constraint(equalTo: updateCardStack.widthAnchor)
+        }
+        NSLayoutConstraint.activate(updateRowWidthConstraints)
+        if availableUpdateVersion != nil {
+            updateCardStack.setCustomSpacing(8, after: updateVersionRow)
+            updateCardStack.setCustomSpacing(18, after: updateCurrentVersionLabel)
+        }
+    }
+
     private func buildAutoOffCard() -> NSView {
         autoOffControl.onMinutesChange = { [weak self] minutes in
             self?.onAutoOffMinutesChange(minutes)
@@ -705,6 +848,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         keepDisplayAwakeToggle.setOn(Preferences.keepDisplayAwake)
         externalCapsLockOffToggle.setOn(Preferences.ignoreExternalCapsLockOffWhileLidClosed)
         openAtLoginToggle.setOn(Preferences.launchAtLogin)
+        automaticUpdateChecksToggle.setOn(Preferences.automaticUpdateChecks)
         shortcutRecorder.setShortcut(Preferences.keyboardShortcut)
         autoOffControl.setMinutes(Preferences.autoOffMinutes)
     }

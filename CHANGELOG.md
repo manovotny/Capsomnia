@@ -4,6 +4,12 @@ All notable changes to Capsomnia will be documented in this file.
 
 ## Unreleased
 
+## 3.5.0 - 2026-09-06
+
+- Add a built-in, dependency-free update check. "Check for Updates…" in the menu bar menu queries the GitHub releases API, and an opt-out daily automatic check (Advanced Settings) surfaces new versions as "Update available" in the menu. Choosing to update downloads the installer package to Capsomnia's own caches folder — avoiding the macOS Downloads-folder privacy prompt — verifies it is signed by Capsomnia's Developer ID team before opening it, and removes the download automatically on the first launch after the update. The check reads GitHub's public release information and sends no telemetry, identifiers, or personal data.
+
+- Group the automatic-check setting, available version, and download action in an Updates card in Advanced Settings. A compact Info link beside the version opens its GitHub release notes. The card updates when a newer release is detected, and all four languages use concise explanatory text.
+
 ## 3.4.0 - 2026-08-24
 
 - Refocus the menu bar menu on day-to-day controls: choose an auto-off timer preset, see the live remaining time while it runs, open the custom timer editor, and toggle "Keep display awake" without opening Settings.

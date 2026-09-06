@@ -31,6 +31,8 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var autoOffPresetMenuItems: [NSMenuItem] = []
     private weak var autoOffCustomMenuItem: NSMenuItem?
     private weak var keepDisplayAwakeStatusMenuItem: NSMenuItem?
+    private weak var checkForUpdatesMenuItem: NSMenuItem?
+    private var updateController: UpdateController?
     private var settingsWindowController: SettingsWindowController?
     private let onImage = DotImage.make(color: Brand.led)
     private let offImage = DotImage.make(color: NSColor(calibratedWhite: 0.58, alpha: 1.0))
@@ -65,6 +67,16 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         Preferences.registerDefaults()
+
+        let controller = UpdateController(log: { [weak self] message in
+            self?.log(message)
+        })
+        controller.onAvailableVersionChange = { [weak self] in
+            self?.updateStatusMenuControls()
+            self?.settingsWindowController?.updateAvailableVersion(self?.updateController?.availableVersion)
+        }
+        updateController = controller
+
         configureGlobalHotKey()
         let shouldShowInitialSetup = Preferences.consumeForceWelcomeOnNextLaunch()
             || !Preferences.didCompleteInitialSetup
@@ -92,6 +104,12 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if shouldShowInitialSetup {
             showSettingsWindow(page: .initialPreferences)
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.updateController?.cleanUpInstallerIfNeeded()
+            self?.updateController?.autoCheckIfDue()
+            self?.updateController?.startAutoCheckTimer()
         }
     }
 
@@ -370,6 +388,16 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let openItem = NSMenuItem(title: strings.openCapsomnia, action: #selector(openCapsomnia), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
+
+        let updatesItem = NSMenuItem(
+            title: strings.checkForUpdates,
+            action: #selector(checkForUpdatesFromMenu),
+            keyEquivalent: ""
+        )
+        updatesItem.target = self
+        menu.addItem(updatesItem)
+        checkForUpdatesMenuItem = updatesItem
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: strings.quit, action: #selector(quit), keyEquivalent: "q")
@@ -382,6 +410,15 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         updateStatusMenuControls()
+        updateController?.autoCheckIfDue()
+    }
+
+    @objc private func checkForUpdatesFromMenu() {
+        if let availableVersion = updateController?.availableVersion {
+            updateController?.promptDownload(version: availableVersion)
+        } else {
+            updateController?.checkNow()
+        }
     }
 
     @objc private func toggleCapsLockFromMenu() {
@@ -486,13 +523,24 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onKeyboardShortcutRecordingChange: { [weak self] isRecording in
                     self?.setKeyboardShortcutRecording(isRecording)
                 },
+                onAutomaticUpdateChecksChange: { [weak self] enabled in
+                    Preferences.automaticUpdateChecks = enabled
+                    self?.log("preference automatic_update_checks=\(enabled ? "on" : "off")")
+                },
                 onFinishInitialSetup: { [weak self] in
                     Preferences.didCompleteInitialSetup = true
                     self?.log("initial_setup_complete")
+                },
+                onUpdate: { [weak self] version in
+                    self?.updateController?.promptDownload(version: version)
+                },
+                onReleaseNotes: { [weak self] version in
+                    self?.updateController?.openReleaseNotes(version: version)
                 }
             )
         }
 
+        settingsWindowController?.updateAvailableVersion(updateController?.availableVersion)
         settingsWindowController?.show(page: page)
     }
 
@@ -679,6 +727,9 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoOffCustomMenuItem?.state = selectedMinutes > 0
             && !AutoOffPreset.isQuickPick(selectedMinutes) ? .on : .off
         keepDisplayAwakeStatusMenuItem?.state = Preferences.keepDisplayAwake ? .on : .off
+        checkForUpdatesMenuItem?.title = updateController?.availableVersion.map {
+            String(format: strings.updateAvailableMenuFormat, $0)
+        } ?? strings.checkForUpdates
     }
 
     private func configureGlobalHotKey() {
