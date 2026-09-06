@@ -147,6 +147,11 @@ final class UpdateController {
         }
     }
 
+    func openReleaseNotes(version: String) {
+        guard let url = URL(string: "https://github.com/\(Self.repository)/releases/tag/v\(version)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     // MARK: - Download
 
     func promptDownload(version: String) {

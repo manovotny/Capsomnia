@@ -73,6 +73,7 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
         })
         controller.onAvailableVersionChange = { [weak self] in
             self?.updateStatusMenuControls()
+            self?.settingsWindowController?.updateAvailableVersion(self?.updateController?.availableVersion)
         }
         updateController = controller
 
@@ -529,10 +530,17 @@ final class Capsomnia: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onFinishInitialSetup: { [weak self] in
                     Preferences.didCompleteInitialSetup = true
                     self?.log("initial_setup_complete")
+                },
+                onUpdate: { [weak self] version in
+                    self?.updateController?.promptDownload(version: version)
+                },
+                onReleaseNotes: { [weak self] version in
+                    self?.updateController?.openReleaseNotes(version: version)
                 }
             )
         }
 
+        settingsWindowController?.updateAvailableVersion(updateController?.availableVersion)
         settingsWindowController?.show(page: page)
     }
 
