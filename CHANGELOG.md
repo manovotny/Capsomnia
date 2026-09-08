@@ -6,6 +6,19 @@ All notable changes to Capsomnia will be documented in this file.
 
 - Add an optional "Hide the Caps Lock indicator" setting to Advanced Settings that suppresses the macOS indicator shown in text fields while Caps Lock is on, via the system `redesigned_text_cursor` feature-flag override. The change requires a Mac restart; Capsomnia shows a restart reminder until the current boot reflects the on-disk state, and toggling back before restarting clears it. The privileged helper gains argument-restricted `indicator-hide` and `indicator-show` modes that edit only `/Library/Preferences/FeatureFlags/Domain/UIKit.plist`, preserve unrelated flags, and remove the file when nothing else remains. The uninstaller restores the macOS default.
 
+## 4.0.0 - 2026-09-08
+
+- Add the local control service for the independently distributed cpsm CLI and
+  capsomnia Skill: awake mode, one-shot timers, settings and JSON diagnostics.
+- Explicit CLI off requests immediate sleep after verifying sleep prevention has
+  been released. Keyboard shortcut editing stays in the GUI.
+- Add an Advanced Settings download card for cpsm, MacReady and their common
+  Skills, using a signed and notarized Tools installer with automatic shared Skill placement and Claude Code compatibility links. The app package remains app-only.
+- Consume versioned library snapshots from the independent cpsm and MacReady
+  repositories, keeping the app build self-contained.
+
+- Migrate existing updater cache permissions so the CLI service also starts after upgrading from 3.5.0.
+
 ## 3.5.0 - 2026-09-06
 
 - Add a built-in, dependency-free update check. "Check for Updates…" in the menu bar menu queries the GitHub releases API, and an opt-out daily automatic check (Advanced Settings) surfaces new versions as "Update available" in the menu. Choosing to update downloads the installer package to Capsomnia's own caches folder — avoiding the macOS Downloads-folder privacy prompt — verifies it is signed by Capsomnia's Developer ID team before opening it, and removes the download automatically on the first launch after the update. The check reads GitHub's public release information and sends no telemetry, identifiers, or personal data.
